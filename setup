@@ -1,0 +1,336 @@
+✅ Got it — let’s build a **detailed tutorial-style write-up** you can share on your GitHub, portfolio, or even post as a blog article.
+
+I will write it in a clean, step-by-step style so **anyone** could follow and replicate your lab. Feel free to copy this straight into a `README.md` or a Google Doc.
+
+---
+
+# 🛡️ **Build Your Own Cybersecurity Home Lab**
+
+*Simulate, Analyze, and Defend Network Attacks with pfSense, Kali Linux, and Ubuntu*
+
+---
+
+## **Table of Contents**
+
+1. Introduction
+2. Lab Goals
+3. Tools & Requirements
+4. Lab Network Topology
+5. Virtual Machine Setup
+
+   * pfSense firewall
+   * Kali Linux attacker
+   * Ubuntu victim
+6. pfSense Configuration
+7. Kali Linux Configuration
+8. Ubuntu Configuration
+9. Simulating DoS Attacks
+10. Blocking Attacks with pfSense
+11. Verifying Results
+12. Lessons Learned
+13. References
+
+---
+
+## **1. Introduction**
+
+In this hands-on cybersecurity lab, you will build a realistic network defense scenario using VirtualBox. The lab will have:
+
+✅ A **pfSense** firewall as your security gateway
+✅ A **Kali Linux** machine to simulate a malicious attacker
+✅ An **Ubuntu Desktop** victim machine
+✅ Traffic analysis with **Wireshark**
+✅ Defensive firewall rules to detect and block malicious traffic
+
+By the end of this tutorial, you will have experienced a complete security workflow: **network segmentation, attack simulation, detection, and response** — exactly what security analysts do in the real world.
+
+---
+
+## **2. Lab Goals**
+
+* Understand network segmentation and routing
+* Practice firewall configuration with pfSense
+* Simulate a Denial-of-Service (DoS) attack from an external attacker
+* Capture malicious traffic on the victim
+* Block the attack using firewall rules
+* Verify mitigation using logs and packet capture
+
+---
+
+## **3. Tools & Requirements**
+
+**Software:**
+
+* VirtualBox 7.x or higher
+* pfSense CE 2.7.x ISO
+* Kali Linux latest ISO
+* Ubuntu 22.04 Desktop ISO
+* Wireshark
+
+**Hardware:**
+
+* Host machine with at least **8GB RAM** and **40GB free disk**
+* Internet connection to download ISOs
+* Administrative rights on your host (needed for bridged adapters)
+
+---
+
+## **4. Lab Network Topology**
+
+```
+[Home LAN (192.168.0.0/24)]
+     |
+  [pfSense WAN - Bridged]
+     |
+[pfSense LAN - Internal LabNet 192.168.1.0/24]
+    |                           |
+[Ubuntu Victim]            [Kali Attacker]
+```
+
+**IP Address Plan:**
+
+| Device      | Interface | IP address           | Role                  |
+| ----------- | --------- | -------------------- | --------------------- |
+| pfSense WAN | vtnet0    | 192.168.0.x (DHCP)   | Connected to home LAN |
+| pfSense LAN | vtnet1    | 192.168.1.1/24       | Gateway for LabNet    |
+| Kali Linux  | eth0      | 192.168.0.200 (DHCP) | External attacker     |
+| Ubuntu      | eth0      | 192.168.1.100 (DHCP) | Internal victim       |
+
+---
+
+## **5. Virtual Machine Setup**
+
+### 5.1 Create pfSense VM
+
+1. In VirtualBox, click **New**
+
+   * Name: `pfSense`
+   * Type: BSD
+   * Version: FreeBSD 64-bit
+2. Assign:
+
+   * 2 vCPU
+   * 2GB RAM
+   * 20GB dynamically allocated disk
+3. Under **Network**:
+
+   * Adapter 1: Bridged (to your physical NIC)
+   * Adapter 2: Internal Network (name it `LabNet`)
+4. Attach the pfSense ISO under **Storage**
+5. Boot and install pfSense with default settings
+6. In the pfSense console:
+
+   * Assign `vtnet0` as WAN
+   * Assign `vtnet1` as LAN
+   * pfSense will pull an IP from your home router for WAN
+   * LAN will default to 192.168.1.1/24
+
+> ✅ **Tip**: Take a VirtualBox snapshot after installation to easily restore later.
+
+---
+
+### 5.2 Create Kali Linux VM (Attacker)
+
+1. **New VM**
+
+   * Type: Debian 64-bit
+   * Name: `Kali`
+2. 2 vCPU, 2GB RAM, 15GB disk
+3. Adapter 1: Bridged (same as pfSense WAN network)
+4. Install Kali Linux from ISO
+5. After installing, detach the ISO and boot from disk
+6. Kali should get a DHCP IP from your home router, e.g. 192.168.0.200
+
+---
+
+### 5.3 Create Ubuntu VM (Victim)
+
+1. **New VM**
+
+   * Type: Ubuntu 64-bit
+   * Name: `UbuntuVictim`
+2. 2 vCPU, 2GB RAM, 15GB disk
+3. Adapter 1: Internal Network (`LabNet`)
+4. Install Ubuntu from ISO
+5. Ubuntu will get DHCP from pfSense (e.g. 192.168.1.100)
+
+---
+
+## **6. pfSense Configuration**
+
+### 6.1 Access the pfSense GUI
+
+1. In the pfSense console, check the WAN IP, for example 192.168.0.58
+2. Temporarily disable the pfSense firewall with:
+
+   ```
+   pfctl -d
+   ```
+
+   from the pfSense shell.
+3. Open your web browser on the host machine and visit:
+
+   ```
+   https://<pfSense-WAN-IP>
+   ```
+4. Default credentials:
+
+   * User: admin
+   * Pass: pfsense
+
+### 6.2 Enable WAN GUI Rule
+
+* Go to **Firewall > Rules > WAN > Add**
+
+  * Action: Pass
+  * Protocol: TCP
+  * Source: Your home subnet
+  * Destination: pfSense WAN IP
+  * Port: 443
+  * Description: Allow GUI access
+* Apply and save.
+
+---
+
+### 6.3 Configure LAN DHCP
+
+* **Services > DHCP Server > LAN**
+
+  * Enable DHCP
+  * Range: 192.168.1.100 - 192.168.1.199
+  * DNS server: 192.168.0.1 (home router)
+  * Save and Apply
+
+---
+
+### 6.4 Allow Attacker Access Temporarily
+
+* **Firewall > Rules > WAN > Add**
+
+  * Action: Pass
+  * Protocol: Any
+  * Source: Kali IP (e.g. 192.168.0.200)
+  * Destination: Ubuntu (192.168.1.100)
+  * Description: Allow Kali to reach Ubuntu
+  * Save and Apply
+
+> This is for demonstration; you will block it later.
+
+---
+
+## **7. Kali Linux Configuration**
+
+1. Confirm Kali’s IP with:
+
+   ```
+   ifconfig
+   ```
+
+   Suppose you get 192.168.0.200.
+
+2. Add a static route to reach the LabNet (192.168.1.0/24) via pfSense:
+
+   ```
+   sudo ip route add 192.168.1.0/24 via <pfSense WAN IP>
+   ```
+
+   Replace `<pfSense WAN IP>` with the real value (like 192.168.0.58).
+
+---
+
+## **8. Ubuntu Configuration**
+
+1. Check the IP:
+
+   ```
+   ifconfig
+   ```
+
+   Should show 192.168.1.100 from pfSense.
+
+2. Confirm connectivity:
+
+   ```
+   ping -c3 google.com
+   ```
+
+   Should work if everything is routed correctly.
+
+---
+
+## **9. Simulating DoS Attacks**
+
+1. On Ubuntu, install Wireshark:
+
+   ```
+   sudo apt update
+   sudo apt install wireshark
+   sudo wireshark &
+   ```
+
+   Start capturing on `eth0`.
+
+2. On Kali, launch a simple ICMP flood:
+
+   ```
+   sudo hping3 -1 --flood 192.168.1.100
+   ```
+
+   Or a SYN flood:
+
+   ```
+   sudo hping3 --flood -S -p 80 192.168.1.100
+   ```
+
+3. In Wireshark, you should see a huge spike in packets.
+
+---
+
+## **10. Blocking the Attack**
+
+1. In pfSense GUI:
+
+   * **Firewall > Rules > WAN > Add**
+
+     * Action: Block
+     * Protocol: Any
+     * Source: Kali IP (192.168.0.200)
+     * Destination: 192.168.1.100
+     * Enable logging
+     * Description: Block Kali DoS
+   * Save and Apply
+
+2. Check Wireshark on Ubuntu — you should see the flood traffic *stop*.
+
+3. Go to **Status > System Logs > Firewall** in pfSense
+
+   * Confirm you see logs for the block rule firing.
+
+---
+
+## **11. Verifying Results**
+
+✅ Wireshark no longer sees flood packets
+✅ Ubuntu victim stays reachable for normal traffic
+✅ pfSense logs show the blocked entries
+✅ Lab behaves as expected
+
+---
+
+## **12. Lessons Learned**
+
+* pfSense is an effective open-source firewall
+* Virtual network segmentation is a key defense skill
+* Logging is critical for incident response
+* Simulating attack/defense in a safe lab helps build real-world experience
+
+---
+
+## **13. References**
+
+* [pfSense Docs](https://docs.netgate.com/pfsense/en/latest/)
+* [Kali Linux Docs](https://www.kali.org/docs/)
+* [Wireshark Docs](https://www.wireshark.org/docs/)
+* VirtualBox Networking [User Manual](https://www.virtualbox.org/manual/ch06.html)
+
+---
